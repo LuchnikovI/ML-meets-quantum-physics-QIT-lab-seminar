@@ -13,7 +13,7 @@ class RNNWaveFunction:
 
     def __init__(self, rnn_cell, ffnn,
                  number_of_particles, local_dim):
-        
+     
         self.cell = rnn_cell  # rnn cell
         self.nn = ffnn  # neural network that processes output of rnn
         self.N = number_of_particles  # number of particles
@@ -38,7 +38,7 @@ class RNNWaveFunction:
         Args:
             number_of_samples: int value, number of samples to create
         Returns:
-            float tensor of shape 
+            float tensor of shape
             (number_of_samples, number_of_particles, dim_of_local_space),
             one hot representation of samples from |psi|^2'''
 
@@ -48,6 +48,7 @@ class RNNWaveFunction:
         samples = tf.ones((number_of_samples, 1, self.n))
         # initial number of iteration
         i = tf.constant(0)
+
         # body of a loop
         def sample_one_side(i, state, samples):
             # Apply rnn cell to previous sample and state, output shape
@@ -56,7 +57,7 @@ class RNNWaveFunction:
             # apply NN to output of rnn cell, output shape
             # (number_of_samples, 2 * self.n)
             nn_out = self.nn(cell_out)
-            # reshape of NN output, output shape 
+            # reshape of NN output, output shape
             # (number_of_samples, self.n, 2)
             nn_out_resh = tf.reshape(nn_out, (number_of_samples, self.n, 2))
             # generate sample using Gumbel trick,
@@ -90,7 +91,7 @@ class RNNWaveFunction:
                 point, where one needs to calculate values of psi function
         Returns:
             list of two tensors of shape (number_of_samples,),
-            first tensor is log(|psi|^2) second is phase of a 
+            first tensor is log(|psi|^2) second is phase of a
             psi function'''
 
         # initial state
@@ -125,18 +126,29 @@ class RNNWaveFunction:
             complex value tensor of shape (number_of_samples,), local
             energy per sample'''
 
+        # denominator
         log_p, phi = self.value(samples)
         log_p = tf.cast(log_p, dtype=tf.complex64)
         phi = tf.cast(phi, dtype=tf.complex64)
+        
+        # complex version of samples
         csamples = tf.cast(samples, dtype=tf.complex64)
 
+        # pauli matrices assotiated multipliers
         x = tf.constant([1, 1], dtype=tf.complex64)
         y = tf.constant([-1j, 1j], dtype=tf.complex64)
         z = tf.constant([1, -1], dtype=tf.complex64)
-
+        
+        # initial value of local energy
         E = tf.zeros((samples.shape[0],), dtype=tf.complex64)
+        
+        # first tf while loop that calculates contrbution of interaction into
+        # local energy
+        
+        # initial value of counter
         iter = tf.constant(0)
-
+        
+        # contribution of one interaction term
         def local_int_term(iter, E):
 
             ind = connections[iter]
@@ -164,9 +176,13 @@ class RNNWaveFunction:
             E_new = Exx * ratio + Eyy * ratio + Ezz
             return iter + 1, E_new + E
 
+        # stopping criteria
         cond1 = lambda iter, E: iter < connections.shape[0]
+        # loop
         _, E = tf.while_loop(cond1, local_int_term, loop_vars=[iter, E])
 
+        # second tf while loop that calculates contrbution of ext. magnetic
+        # fields into the local energy
         def local_term(iter, E):
             # x energy
             Ex = tf.reduce_sum(csamples[:, iter] * x, axis=-1)
@@ -189,6 +205,9 @@ class RNNWaveFunction:
             E_new = Ex * ratio + Ey * ratio + Ez
             return iter + 1, E_new + E
 
+        # stopping criteria
         cond2 = lambda iter, E: iter < self.N
+
+        # loop
         _, E = tf.while_loop(cond2, local_term, loop_vars=[iter, E])
         return E

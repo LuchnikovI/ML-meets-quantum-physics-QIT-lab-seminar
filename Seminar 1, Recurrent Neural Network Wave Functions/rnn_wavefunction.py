@@ -285,7 +285,7 @@ class RNNWaveFunction:
                 (number_of_particles, 3), x, y, z components of external
                 magnetic field per site"""
 
-        av_E = tf.constant(0, dtype=tf.complex64)
+        av_E = tf.constant(0, dtype=tf.float32)
         E = tf.constant([0], dtype=tf.float32)
         iter = tf.constant(0)
         # body of a loop
@@ -300,8 +300,8 @@ class RNNWaveFunction:
                 log_p = tf.cast(log_p, dtype=tf.complex64)
                 phi = tf.cast(phi, dtype=tf.complex64)
                 log_psi_conj = 0.5 * log_p - 1j * phi
-                loss = 2 * tf.math.real(tf.reduce_mean(log_psi_conj * (local_E - av_E)))
-            av_E = tf.reduce_mean(local_E)
+                loss = 2 * tf.math.real(tf.reduce_mean(log_psi_conj * (local_E - tf.cast(av_E, dtype=tf.complex64))))
+            av_E = tf.math.real(tf.reduce_mean(local_E))
             E = tf.concat([E, av_E], axis=0)
             grad = tape.gradient(loss, self.ffnn.weights + self.cell.weights)
             opt.apply_gradients(zip(grad, self.ffnn.weights + self.cell.weights))

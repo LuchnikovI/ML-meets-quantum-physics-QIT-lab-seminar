@@ -211,3 +211,107 @@ class RNNWaveFunction:
         # loop
         _, E = tf.while_loop(cond2, local_term, loop_vars=[iter, E])
         return E
+
+    def correlator(self, ind1, ind2, n):
+        """Returnes correlator build from samples.
+        Args:
+            ind1: int value, position of the first site
+            ind2: int value, position of the second site
+            n: int value, n*10000 samples are used for averaging
+        Return:
+            complex valued tensor of shape (3,), xx, yy, zz
+            correlators values"""
+
+        # pauli matrices assotiated multipliers
+        x = tf.constant([1, 1], dtype=tf.complex64)
+        y = tf.constant([-1j, 1j], dtype=tf.complex64)
+        z = tf.constant([1, -1], dtype=tf.complex64)
+        corr = tf.constant([0, 0, 0], dtype=tf.complex64)
+        for _ in range(n):
+            # denominator
+            samples = self.sample(10000)
+            log_p, phi = self.value(samples)
+            log_p = tf.cast(log_p, dtype=tf.complex64)
+            phi = tf.cast(phi, dtype=tf.complex64)
+            
+            # complex version of samples
+            csamples = tf.cast(samples, dtype=tf.complex64)
+            
+            # xx corr
+            corrxx = tf.reduce_sum(csamples[:, ind1] * x, axis=-1) *\
+            tf.reduce_sum(csamples[:, ind2] * x, axis=-1)
+            # yy corr
+            corryy = tf.reduce_sum(csamples[:, ind1] * y, axis=-1) *\
+            tf.reduce_sum(csamples[:, ind2] * y, axis=-1)
+            # zz energy
+            corrzz = tf.reduce_sum(csamples[:, ind1] * z, axis=-1) *\
+            tf.reduce_sum(csamples[:, ind2] * z, axis=-1)
+
+            double_flipped_samples = double_flip_sample(samples, tf.constant([ind1, ind2]))
+            double_flipped_log_p, double_flipped_phi = self.value(double_flipped_samples)
+            double_flipped_log_p = tf.cast(double_flipped_log_p, dtype=tf.complex64)
+            double_flipped_phi = tf.cast(double_flipped_phi, dtype=tf.complex64)
+            ratio = tf.exp(0.5 * double_flipped_log_p -\
+                           0.5 * log_p +\
+                           1j * double_flipped_phi -\
+                           1j * phi)
+            
+            corr_update = tf.concat([tf.reduce_mean(corrxx * ratio),
+                                     tf.reduce_mean(corryy * ratio),
+                                     tf.reduce_mean(corrzz)], axis=0)
+            corr = corr + corr_update
+        return corr / n
+
+    @tf.function
+    def train(self,
+              sample_size,
+              number_of_iters,
+              opt,
+              connections,
+              ampls,
+              local_fields):
+        """Optimizes RNN Wavefunction.
+        Args:
+            sample_size: int value, number of samples, that is used to
+                calculate expectation values
+            number_of_iters: in value, number of iterations
+            opt: tf optimizer
+            connections: int tensor of shape (number_of_connections, 2),
+                first index enumerates number of connections, second
+                index enumerates sites that are connected
+            ampls: complex valued tensor of shape (number_of_connections, 3),
+                amplitudes of xx, yy and zz terms between connected sites
+            local_fields: complex valued tensor of shape
+                (number_of_particles, 3), x, y, z components of external
+                magnetic field per site"""
+
+        av_E = tf.constant(0, dtype=tf.complex64)
+
+        E = tf.constant([0], dtype=tf.float32)
+        iter = tf.constant(0)
+        # body of a loop
+        def train_step(E, iter):
+            with tf.GradientTape() as tape:
+                samples = tf.stop_gradient(self.sample(sample_size))
+                local_E = tf.stop_gradient(self.local_energy(connections,
+                                                            ampls,
+                                                            local_fields,
+                                                            samples))
+                log_p, phi = self.value(samples)
+                log_p = tf.cast(log_p, dtype=tf.complex64)
+                phi = tf.cast(phi, dtype=tf.complex64)
+                log_psi_conj = 0.5 * log_p - 1j * phi
+                loss = 2 * tf.math.real(tf.reduce_mean(log_psi_conj * (local_E - av_E)))
+            av_E = tf.reduce_mean(local_E)
+            E = tf.concat([E, av_E], axis=0)
+            grad = tape.gradient(loss, self.ffnn.weights + self.cell.weights)
+            opt.apply_gradients(zip(grad, self.ffnn.weights + self.cell.weights))
+            return E, iter+1
+        # stopping criteria
+        cond = lambda E, iter: iter < number_of_iters
+        # loop
+        E, _ = tf.while_loop(cond, train_step,
+                                      loop_vars=[E, iter],
+                                      shape_invariants=[tf.TensorShape((None,)),
+                                                        iter.shape])
+        return E

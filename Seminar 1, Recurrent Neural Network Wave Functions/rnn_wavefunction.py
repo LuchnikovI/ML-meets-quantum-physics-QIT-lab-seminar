@@ -303,8 +303,8 @@ class RNNWaveFunction:
                 loss = 2 * tf.math.real(tf.reduce_mean(log_psi_conj * (local_E - tf.cast(av_E, dtype=tf.complex64))))
             av_E = tf.math.real(tf.reduce_mean(local_E))
             E = tf.concat([E, av_E[tf.newaxis]], axis=0)
-            grad = tape.gradient(loss, self.ffnn.weights + self.cell.weights)
-            opt.apply_gradients(zip(grad, self.ffnn.weights + self.cell.weights))
+            grad = tape.gradient(loss, self.nn.weights + self.cell.weights)
+            opt.apply_gradients(zip(grad, self.nn.weights + self.cell.weights))
             return E, av_E, iter+1
         # stopping criteria
         cond = lambda E, av_E, iter: iter < number_of_iters

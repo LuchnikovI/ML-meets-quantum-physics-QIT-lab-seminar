@@ -1,1 +1,1 @@
-# ML-meets-quantum-physics-QIT-lab-seminar
+One can open a experiments with RNN wavefunction in [Google colab](https://colab.research.google.com/github/LuchnikovI/ML-meets-quantum-physics-QIT-lab-seminar/blob/main/Seminar%201%2C%20Recurrent%20Neural%20Network%20Wave%20Functions/RNN_wave_functions.ipynb)

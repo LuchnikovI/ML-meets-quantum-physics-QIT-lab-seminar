@@ -286,11 +286,10 @@ class RNNWaveFunction:
                 magnetic field per site"""
 
         av_E = tf.constant(0, dtype=tf.complex64)
-
         E = tf.constant([0], dtype=tf.float32)
         iter = tf.constant(0)
         # body of a loop
-        def train_step(E, iter):
+        def train_step(E, av_E, iter):
             with tf.GradientTape() as tape:
                 samples = tf.stop_gradient(self.sample(sample_size))
                 local_E = tf.stop_gradient(self.local_energy(connections,
@@ -306,12 +305,13 @@ class RNNWaveFunction:
             E = tf.concat([E, av_E], axis=0)
             grad = tape.gradient(loss, self.ffnn.weights + self.cell.weights)
             opt.apply_gradients(zip(grad, self.ffnn.weights + self.cell.weights))
-            return E, iter+1
+            return E, av_E, iter+1
         # stopping criteria
-        cond = lambda E, iter: iter < number_of_iters
+        cond = lambda E, av_E, iter: iter < number_of_iters
         # loop
-        E, _ = tf.while_loop(cond, train_step,
-                                      loop_vars=[E, iter],
+        E, _, _ = tf.while_loop(cond, train_step,
+                                      loop_vars=[E, av_E, iter],
                                       shape_invariants=[tf.TensorShape((None,)),
+                                                        av_E.shape,
                                                         iter.shape])
-        return E
+        return E[1:]
